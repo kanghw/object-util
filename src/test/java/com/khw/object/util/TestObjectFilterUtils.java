@@ -81,7 +81,7 @@ public class TestObjectFilterUtils {
     public void test_4() {
         TestParam param = testUtils.getTestParam("---", "===");
 
-        param = (TestParam) ObjectFilterUtils.typeObjectFilter(param, str -> "****", String.class);
+        param = (TestParam) ObjectFilterUtils.typeObjectFilter(param, str -> "----", String.class);
         jsonPrint(param);
     }
 

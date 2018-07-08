@@ -97,7 +97,7 @@ public class ObjectFilterUtils {
             }
             // 어떤 형식에도 표함되지 않을 경우에는 사용자 정의 객체일 수 있기 때문에 다시 호출.
             else {
-                objectFilter(object, filter, tClass);
+                object = objectFilter(object, filter, tClass);
             }
             return object;
         } catch (Exception e) {
