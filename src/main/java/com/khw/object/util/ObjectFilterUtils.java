@@ -4,27 +4,14 @@ import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
+import org.springframework.beans.BeanUtils;
 
 public class ObjectFilterUtils {
-
-    private static final Map<Class<?>, Class<?>> primitiveWrapperTypeMap = new IdentityHashMap<>(8);
-
-    static {
-        primitiveWrapperTypeMap.put(Boolean.class, boolean.class);
-        primitiveWrapperTypeMap.put(Byte.class, byte.class);
-        primitiveWrapperTypeMap.put(Character.class, char.class);
-        primitiveWrapperTypeMap.put(Double.class, double.class);
-        primitiveWrapperTypeMap.put(Float.class, float.class);
-        primitiveWrapperTypeMap.put(Integer.class, int.class);
-        primitiveWrapperTypeMap.put(Long.class, long.class);
-        primitiveWrapperTypeMap.put(Short.class, short.class);
-    }
 
     /**
      * 사용자 정의 객체를 입력받아서 해당 객체의 내부 기본 값들을 돌면서 value 의 값이 tClass 와 일치하는 타입일 경우 filter 함수를 실행한 결과로 대치한다.
@@ -33,7 +20,7 @@ public class ObjectFilterUtils {
      * @param filter - tClass 에 해당하는 value 를 처리할 filter - Function 의 구현체.
      * @param tClass - value 값들 중 특정 타입만 filter 를 처리하려고 할 때의 value 타입.
      */
-    public static <T> Object objectFilter(Object obj, Function<T, T> filter, Class<T> tClass) {
+    private static <T> Object objectFilter(Object obj, Function<T, T> filter, Class<T> tClass) {
         try {
             if (obj == null) {
                 return obj;
@@ -52,8 +39,11 @@ public class ObjectFilterUtils {
                     if (field.getType() == tClass || isAssignableFrom(field.getType(), tClass)) {
                         field.set(obj, filter.apply((T) field.get(obj)));
                     }
-                } else if (isAssignableFrom(field.getType(), Collection.class) || isAssignableFrom(field.getType(), Object[].class) || isAssignableFrom(
-                    field.getType(), Map.class) || field.getType().isArray()) {
+                } else if (isAssignableFrom(field.getType(), Collection.class)
+                    || isAssignableFrom(field.getType(), Object[].class)
+                    || isAssignableFrom(field.getType(), Map.class)
+                    || isAssignableFrom(field.getType(), Map.Entry.class)
+                    || field.getType().isArray()) {
                     field.set(obj, typeObjectFilter(fieldObj, filter, tClass));
                 } else {
                     field.set(obj, objectFilter(fieldObj, filter, tClass));
@@ -61,7 +51,7 @@ public class ObjectFilterUtils {
             }
             return obj;
         } catch (Exception e) {
-            throw new ObjectFilterException(e);
+            throw new ObjectFilterException(e, obj);
         }
     }
 
@@ -101,13 +91,17 @@ public class ObjectFilterUtils {
             else if (isAssignableFrom(object.getClass(), Map.class)) {
                 object = mapObjectFilter((Map) object, filter, tClass);
             }
+            // object 가 Map 형식일 경우.
+            else if (isAssignableFrom(object.getClass(), Map.Entry.class)) {
+                object = mapEntryObjectFilter((Map.Entry<Object, Object>) object, filter, tClass);
+            }
             // 어떤 형식에도 표함되지 않을 경우에는 사용자 정의 객체일 수 있기 때문에 다시 호출.
             else {
                 objectFilter(object, filter, tClass);
             }
             return object;
         } catch (Exception e) {
-            throw new ObjectFilterException(e);
+            throw new ObjectFilterException(e, object);
         }
     }
 
@@ -138,14 +132,14 @@ public class ObjectFilterUtils {
             }
             return result;
         } catch (Exception e) {
-            throw new ObjectFilterException(e);
+            throw new ObjectFilterException(e, object);
         }
     }
 
     /**
      * Map 의 구현체의 value 에 대한 필터를 처리할 경우 사용.
      */
-    public static <T> Map mapObjectFilter(Map<Object, Object> object, Function<T, T> filter, Class<T> tClass) {
+    private static <T> Map mapObjectFilter(Map<Object, Object> object, Function<T, T> filter, Class<T> tClass) {
         try {
             if (object == null || object.size() == 0) {
                 return object;
@@ -171,14 +165,34 @@ public class ObjectFilterUtils {
             }
             return result;
         } catch (Exception e) {
-            throw new ObjectFilterException(e);
+            throw new ObjectFilterException(e, object);
         }
     }
 
     /**
+     * MapEntry 의 구현체의 value 에 대한 필터를 처리할 경우 사용.
+     */
+    private static <T> Map.Entry mapEntryObjectFilter(Map.Entry<Object, Object> object, Function<T, T> filter, Class<T> tClass) {
+        try {
+            if (object == null) {
+                return object;
+            }
+            if (!isSimpleValueType(object.getValue().getClass())) {
+                object.setValue(objectFilter(object.getValue(), filter, tClass));
+            } else if (isAssignableFrom(tClass, object.getValue().getClass())) {
+                object.setValue(filter.apply((T) object.getValue()));
+            }
+            return object;
+        } catch (Exception e) {
+            throw new ObjectFilterException(e, object);
+        }
+    }
+
+
+    /**
      * primitive type array 에 대한 필터를 처리할 경우 사용.
      */
-    public static <T> Object arrayObjectFilter(Object object, Function<T, T> filter, Class<T> tClass) {
+    private static <T> Object arrayObjectFilter(Object object, Function<T, T> filter, Class<T> tClass) {
         try {
             if (object == null || Array.getLength(object) == 0) {
                 return object;
@@ -194,14 +208,14 @@ public class ObjectFilterUtils {
             }
             return object;
         } catch (Exception e) {
-            throw new ObjectFilterException(e);
+            throw new ObjectFilterException(e, object);
         }
     }
 
     /**
      * wrapper class array 에 대한 필터 처리.
      */
-    public static <T> Object[] objectArrayObjectFilter(Object[] object, Function<T, T> filter, Class<T> tClass) {
+    private static <T> Object[] objectArrayObjectFilter(Object[] object, Function<T, T> filter, Class<T> tClass) {
         try {
             if (object == null || object.length == 0) {
                 return object;
@@ -226,14 +240,14 @@ public class ObjectFilterUtils {
             }
             return object;
         } catch (Exception e) {
-            throw new ObjectFilterException(e);
+            throw new ObjectFilterException(e, object);
         }
     }
 
     /**
      * List 구현체의 필터 처리.
      */
-    public static <T> List listObjectFilter(List object, Function<T, T> filter, Class<T> tClass) {
+    private static <T> List listObjectFilter(List object, Function<T, T> filter, Class<T> tClass) {
         try {
             if (object == null || object.size() == 0) {
                 return object;
@@ -259,7 +273,7 @@ public class ObjectFilterUtils {
             }
             return object;
         } catch (Exception e) {
-            throw new ObjectFilterException(e);
+            throw new ObjectFilterException(e, object);
         }
     }
 
@@ -267,7 +281,7 @@ public class ObjectFilterUtils {
      * tClass 가 심플한 Value type 인지 확인. String, Integer, Long 등등의 기본 자료형인지 확인.
      */
     private static boolean isSimpleValueType(Class<?> tClass) {
-        return primitiveWrapperTypeMap.containsKey(tClass);
+        return BeanUtils.isSimpleValueType(tClass);
     }
 
     /**
