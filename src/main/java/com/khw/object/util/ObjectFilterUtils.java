@@ -14,48 +14,6 @@ import org.springframework.beans.BeanUtils;
 public class ObjectFilterUtils {
 
     /**
-     * 사용자 정의 객체를 입력받아서 해당 객체의 내부 기본 값들을 돌면서 value 의 값이 tClass 와 일치하는 타입일 경우 filter 함수를 실행한 결과로 대치한다.
-     *
-     * @param obj - filter 를 처리하려고 하는 사용자 정의 객체.
-     * @param filter - tClass 에 해당하는 value 를 처리할 filter - Function 의 구현체.
-     * @param tClass - value 값들 중 특정 타입만 filter 를 처리하려고 할 때의 value 타입.
-     */
-    private static <T> Object objectFilter(Object obj, Function<T, T> filter, Class<T> tClass) {
-        try {
-            if (obj == null) {
-                return obj;
-            }
-            if (isAssignableFrom(obj.getClass(), tClass)) {
-                return filter.apply((T) obj);
-            }
-
-            Field[] fields = obj.getClass().getDeclaredFields();
-            for (Field field : fields) {
-                // field 접속 가능하도록 수정.
-                field.setAccessible(true);
-
-                Object fieldObj = field.get(obj);
-                if (isSimpleValueType(field.getType())) {
-                    if (field.getType() == tClass || isAssignableFrom(field.getType(), tClass)) {
-                        field.set(obj, filter.apply((T) field.get(obj)));
-                    }
-                } else if (isAssignableFrom(field.getType(), Collection.class)
-                    || isAssignableFrom(field.getType(), Object[].class)
-                    || isAssignableFrom(field.getType(), Map.class)
-                    || isAssignableFrom(field.getType(), Map.Entry.class)
-                    || field.getType().isArray()) {
-                    field.set(obj, typeObjectFilter(fieldObj, filter, tClass));
-                } else {
-                    field.set(obj, objectFilter(fieldObj, filter, tClass));
-                }
-            }
-            return obj;
-        } catch (Exception e) {
-            throw new ObjectFilterException(e, obj);
-        }
-    }
-
-    /**
      * 사용자 정의 객체를 입력하면 해당 객체를 tClass 타입과 일치하는 value 를 filter 처리하여 반환한다. recursive 처리.
      *
      * @param object - filter 를 처리하려고 하는 사용자 정의 객체.
@@ -102,6 +60,48 @@ public class ObjectFilterUtils {
             return object;
         } catch (Exception e) {
             throw new ObjectFilterException(e, object);
+        }
+    }
+
+    /**
+     * 사용자 정의 객체를 입력받아서 해당 객체의 내부 기본 값들을 돌면서 value 의 값이 tClass 와 일치하는 타입일 경우 filter 함수를 실행한 결과로 대치한다.
+     *
+     * @param obj - filter 를 처리하려고 하는 사용자 정의 객체.
+     * @param filter - tClass 에 해당하는 value 를 처리할 filter - Function 의 구현체.
+     * @param tClass - value 값들 중 특정 타입만 filter 를 처리하려고 할 때의 value 타입.
+     */
+    private static <T> Object objectFilter(Object obj, Function<T, T> filter, Class<T> tClass) {
+        try {
+            if (obj == null) {
+                return obj;
+            }
+            if (isAssignableFrom(obj.getClass(), tClass)) {
+                return filter.apply((T) obj);
+            }
+
+            Field[] fields = obj.getClass().getDeclaredFields();
+            for (Field field : fields) {
+                // field 접속 가능하도록 수정.
+                field.setAccessible(true);
+
+                Object fieldObj = field.get(obj);
+                if (isSimpleValueType(field.getType())) {
+                    if (field.getType() == tClass || isAssignableFrom(field.getType(), tClass)) {
+                        field.set(obj, filter.apply((T) field.get(obj)));
+                    }
+                } else if (isAssignableFrom(field.getType(), Collection.class)
+                    || isAssignableFrom(field.getType(), Object[].class)
+                    || isAssignableFrom(field.getType(), Map.class)
+                    || isAssignableFrom(field.getType(), Map.Entry.class)
+                    || field.getType().isArray()) {
+                    field.set(obj, typeObjectFilter(fieldObj, filter, tClass));
+                } else {
+                    field.set(obj, objectFilter(fieldObj, filter, tClass));
+                }
+            }
+            return obj;
+        } catch (Exception e) {
+            throw new ObjectFilterException(e, obj);
         }
     }
 
@@ -178,7 +178,7 @@ public class ObjectFilterUtils {
                 return object;
             }
             if (!isSimpleValueType(object.getValue().getClass())) {
-                object.setValue(objectFilter(object.getValue(), filter, tClass));
+                object.setValue(typeObjectFilter(object.getValue(), filter, tClass));
             } else if (isAssignableFrom(tClass, object.getValue().getClass())) {
                 object.setValue(filter.apply((T) object.getValue()));
             }
